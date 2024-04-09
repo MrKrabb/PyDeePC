@@ -69,8 +69,8 @@ class DeePC(object):
         self.optimization_problem = None
 
     def build_problem(self,
-            build_loss: Callable[[cp.Variable, cp.Variable], Expression],
-            build_constraints: Optional[Callable[[cp.Variable, cp.Variable], Optional[List[Constraint]]]] = None,
+            build_loss: Callable[[cp.Variable, cp.Variable, cp.Parameter], Expression],
+            build_constraints: Optional[Callable[[cp.Variable, cp.Variable, cp.Parameter], Optional[List[Constraint]]]] = None,
             lambda_g: float = 0.,
             lambda_y: float = 0.,
             lambda_u: float= 0.,
@@ -108,6 +108,7 @@ class DeePC(object):
         # Build variables
         uini = cp.Parameter(shape=(self.M * self.Tini), name='u_ini')
         yini = cp.Parameter(shape=(self.P * self.Tini), name='y_ini')
+        s = cp.Parameter(shape=(self.P * self.horizon), name='s')
         u = cp.Variable(shape=(self.M * self.horizon), name='u')
         y = cp.Variable(shape=(self.P * self.horizon), name='y')
         g = cp.Variable(shape=(self.T - self.Tini - self.horizon + 1), name='g')
@@ -139,7 +140,7 @@ class DeePC(object):
         u = cp.reshape(u, (self.horizon, self.M))
         y = cp.reshape(y, (self.horizon, self.P))
 
-        _constraints = build_constraints(u, y) if build_constraints is not None else (None, None)
+        _constraints = build_constraints(u, y, s) if build_constraints is not None else (None, None)
 
         for idx, constraint in enumerate(_constraints):
             if constraint is None or not isinstance(constraint, Constraint) or not constraint.is_dcp():
@@ -148,7 +149,7 @@ class DeePC(object):
         constraints.extend([] if _constraints is None else _constraints)
 
         # Build loss
-        _loss = build_loss(u, y)
+        _loss = build_loss(u, y, s)
         
         if _loss is None or not isinstance(_loss, Expression) or not _loss.is_dcp():
             raise Exception('Loss function is not defined or is not convex!')
@@ -171,7 +172,7 @@ class DeePC(object):
 
         self.optimization_problem = OptimizationProblem(
             variables = OptimizationProblemVariables(
-                u_ini = uini, y_ini = yini, u = u, y = y, g = g, slack_y = slack_y, slack_u = slack_u),
+                u_ini = uini, y_ini = yini, s = s, u = u, y = y, g = g, slack_y = slack_y, slack_u = slack_u),
             constraints = constraints,
             objective_function = problem_loss,
             problem = problem
@@ -182,6 +183,7 @@ class DeePC(object):
     def solve(
             self,
             data_ini: Data,
+            s,
             **cvxpy_kwargs
         ) -> Tuple[np.ndarray, Dict[str, Union[float, np.ndarray, OptimizationProblemVariables]]]:
         """
@@ -212,6 +214,8 @@ class DeePC(object):
 
         self.optimization_problem.variables.u_ini.value = uini
         self.optimization_problem.variables.y_ini.value = yini
+
+        self.optimization_problem.variables.s.value = s
 
         try:
             result = self.optimization_problem.problem.solve(**cvxpy_kwargs)

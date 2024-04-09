@@ -10,6 +10,7 @@ class OptimizationProblemVariables(NamedTuple):
     """
     u_ini: Union[Variable, Parameter]
     y_ini: Union[Variable, Parameter]
+    s: Union[Variable, Parameter]
     u: Union[Variable, Parameter]
     y: Union[Variable, Parameter]
     g: Union[Variable, Parameter]
